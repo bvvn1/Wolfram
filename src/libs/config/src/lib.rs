@@ -1,7 +1,6 @@
 mod config;
 mod error;
 mod toml;
-
 pub use self::config::Config;
 pub use self::toml::load_config;
 
