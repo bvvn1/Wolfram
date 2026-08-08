@@ -1,8 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["src/libs/config"]
+members = ["src/libs/backend","src/libs/config","src/bins/rev_proxy"]
 
 [workspace.dependencies]
+
+config = {path = "src/libs/config"}
+backend = {path = "src/libs/backend"}
+
 tokio = { version = "1.53.1", features = ["full"] }
 serde = {version = "1.0.229", features = ["derive"] }
 axum = {version = "0.8.9"}
@@ -12,3 +16,6 @@ sqlx = {version = "0.9.0"}
 uuid = {version = "1.24.0", features = ["serde"]}
 toml = {version = "1.1.4", features = ["serde"]}
 serde_valid = {version = "2.0.3"}
+dashmap = {version = "6.2.1"}
+arc-swap = {version = "1.9.2"}
+atomic_enum = "0.3.0"
