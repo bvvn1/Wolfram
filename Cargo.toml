@@ -1,11 +1,19 @@
 [workspace]
 resolver = "3"
-members = ["src/libs/backend","src/libs/config","src/bins/rev_proxy"]
+members = ["src/libs/config","src/bins/rev_proxy"]
 
 [workspace.dependencies]
 
+
+pingora-core = "0.8.1"
+pingora-proxy = "0.8.1"
+pingora-load-balancing= "0.8.1"
+pingora-http = "0.8.1"
+async-trait = "0.1.92"
+log = "0.4.33"
+env_logger = "0.11.11"
+
 config = {path = "src/libs/config"}
-backend = {path = "src/libs/backend"}
 
 tokio = { version = "1.53.1", features = ["full"] }
 serde = {version = "1.0.229", features = ["derive"] }

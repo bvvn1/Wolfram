@@ -1,4 +1,15 @@
-backends = [
-    {name = "gogo", host = "127.0.0.1", port = 8080, weight = 10 },
-    {name = "gogodebel", host = "192.168.1.50", port = 8081, weight = 5 }
-]
+[[services]]
+name = "backend-service"
+route = "test.local"
+
+[[services.backends]]
+name = "backend-1"
+host = "127.0.0.1"
+port = 3001
+weight = 1
+
+[[services.backends]]
+name = "backend-2"
+host = "127.0.0.1"
+port = 3002
+weight = 1
