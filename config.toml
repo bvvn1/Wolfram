@@ -1,15 +1,38 @@
 [[services]]
-name = "backend-service"
-route = "test.local"
+name = "user-service"
+host = "api.local"
+prefix = "/user"
 
 [[services.backends]]
-name = "backend-1"
+name = "user-backend-1"
 host = "127.0.0.1"
 port = 3001
 weight = 1
 
 [[services.backends]]
-name = "backend-2"
+name = "user-backend-2"
 host = "127.0.0.1"
 port = 3002
+weight = 1
+
+[[services]]
+name = "auth-service"
+host = "api.local"
+prefix = "/auth"
+
+[[services.backends]]
+name = "auth-backend-1"
+host = "127.0.0.1"
+port = 4001
+weight = 1
+
+[[services]]
+name = "admin-user-service"
+host = "admin.local"
+prefix = "/user"
+
+[[services.backends]]
+name = "admin-user-backend"
+host = "127.0.0.1"
+port = 5001
 weight = 1

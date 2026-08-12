@@ -5,12 +5,16 @@ use std::{path::PathBuf, str::FromStr};
 use anyhow::Error;
 
 use config::load_config;
+use log::info;
 use pingora_core::server::Server;
 
 use crate::proxy::RevProxy;
 
 fn main() -> anyhow::Result<(), Error> {
-    env_logger::init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Info)
+        .init();
+    info!("logger initialized");
 
     let config = load_config(PathBuf::from_str("../../../../config.toml").unwrap())?;
 

@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::net::Ipv4Addr;
+use std::net::IpAddr;
 
 #[derive(Debug, Deserialize)]
 pub struct Config {
@@ -9,14 +9,15 @@ pub struct Config {
 #[derive(Debug, Deserialize)]
 pub struct ServiceConfig {
     pub name: String,
-    pub route: String,
+    pub host: String,
+    pub prefix: String,
     pub backends: Vec<BackendConfig>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct BackendConfig {
     pub name: String,
-    pub host: Ipv4Addr,
+    pub host: IpAddr,
     pub port: u16,
     pub weight: usize,
 }
