@@ -1,13 +1,16 @@
 use std::collections::BTreeSet;
+use std::time::Duration;
 use std::{collections::HashMap, sync::Arc};
 
 use async_trait::async_trait;
 use config::Config;
 
+use log::{error, info};
 use pingora_core::Result;
 use pingora_core::services::background::{GenBackgroundService, background_service};
 use pingora_core::upstreams::peer::HttpPeer;
 use pingora_load_balancing::discovery::Static;
+use pingora_load_balancing::health_check::TcpHealthCheck;
 use pingora_load_balancing::selection::RoundRobin;
 use pingora_load_balancing::{Backend, Backends, LoadBalancer};
 use pingora_proxy::{ProxyHttp, Session};
@@ -38,7 +41,12 @@ impl RevProxy {
             }
 
             let backends = Backends::new(Static::new(set));
-            let lb = LoadBalancer::<RoundRobin>::from_backends(backends);
+            let mut lb = LoadBalancer::<RoundRobin>::from_backends(backends);
+
+            let hc = TcpHealthCheck::new();
+            lb.set_health_check(hc);
+
+            lb.health_check_frequency = Some(Duration::from_mins(1));
 
             let background = background_service(&service.name, lb);
             let lb_handle = background.task(); // Arc<LoadBalancer<RoundRobin>>
@@ -87,6 +95,37 @@ impl ProxyHttp for RevProxy {
             None => {
                 session.respond_error(404).await?;
                 Ok(true)
+            }
+        }
+    }
+
+    async fn logging(
+        &self,
+        session: &mut Session,
+        e: Option<&pingora_error::Error>,
+        _ctx: &mut Self::CTX,
+    ) where
+        Self::CTX: Send + Sync,
+    {
+        match e {
+            Some(e) => {
+                error!("{}", e.to_string());
+
+                if e.cause.is_some() {
+                    error!(
+                        "cause of the error is: {} \n ",
+                        e.cause.as_ref().unwrap().to_string()
+                    )
+                }
+            }
+            None => {
+                info!(
+                    "request forwarded from client with address: {:?} to {:?}",
+                    session.client_addr().map(|a| {
+                        a.to_string();
+                    }),
+                    session.server_addr().map(|a| a.to_string())
+                )
             }
         }
     }

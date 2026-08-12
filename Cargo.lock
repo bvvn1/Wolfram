@@ -1588,6 +1588,7 @@ dependencies = [
  "env_logger",
  "log",
  "pingora-core",
+ "pingora-error",
  "pingora-http",
  "pingora-load-balancing",
  "pingora-proxy",

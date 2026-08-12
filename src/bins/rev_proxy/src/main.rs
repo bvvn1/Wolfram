@@ -15,9 +15,14 @@ fn main() -> anyhow::Result<(), Error> {
     let config = load_config(PathBuf::from_str("../../../../config.toml").unwrap())?;
 
     let (rev_proxy, bkgservices) = RevProxy::init_from_config(&config)?;
+    #[cfg(debug_assertions)]
+    for s in &bkgservices {
+        dbg!(s.task().health_check_frequency);
+    }
 
     let mut server = Server::new(None)?;
     server.bootstrap();
+
     for srv in bkgservices {
         server.add_service(srv);
     }
