@@ -1,5 +1,6 @@
+pub mod error;
 pub mod proxy;
-
+pub mod traits;
 use std::{path::PathBuf, str::FromStr};
 
 use anyhow::Error;

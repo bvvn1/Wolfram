@@ -1,4 +1,4 @@
-mod config;
+pub mod config;
 mod error;
 mod toml;
 pub use self::config::Config;

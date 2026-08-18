@@ -19,3 +19,4 @@ matchit.workspace = true
 config.workspace = true
 thiserror.workspace = true
 bytes.workspace = true
+uuid.workspace = true

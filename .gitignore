@@ -2,3 +2,4 @@
 test_backend.py
 test.py
 config.toml
+run_all_backends.py

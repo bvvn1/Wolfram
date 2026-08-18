@@ -15,6 +15,9 @@ use pingora_load_balancing::health_check::TcpHealthCheck;
 use pingora_load_balancing::selection::RoundRobin;
 use pingora_load_balancing::{Backend, Backends, LoadBalancer};
 use pingora_proxy::{ProxyHttp, Session};
+use uuid::Uuid;
+
+use crate::traits::{PrefixIndexable, ToBackend};
 
 pub struct ServiceRuntime {
     pub name: String,
@@ -22,7 +25,7 @@ pub struct ServiceRuntime {
 }
 
 pub struct RevProxy {
-    pub services: HashMap<String, matchit::Router<Arc<ServiceRuntime>>>,
+    pub services: HashMap<String, Vec<(String, Arc<ServiceRuntime>)>>,
 }
 
 impl RevProxy {
@@ -33,16 +36,18 @@ impl RevProxy {
         let mut background_services = Vec::new();
 
         for service in &config.services {
-            let router = services
+            // let router = services
+            //     .entry(service.host.to_owned())
+            //     .or_insert_with(matchit::Router::new);
+            let prefix_routes = services
                 .entry(service.host.to_owned())
-                .or_insert_with(matchit::Router::new);
-            let mut set = BTreeSet::new();
-            for bckg in &service.backends {
-                let addr = format!("{}:{}", bckg.host, bckg.port);
-                let mut backend = Backend::new(addr.as_str())?;
-                backend.weight = bckg.weight;
-                set.insert(backend);
-            }
+                .or_insert_with(Vec::new);
+
+            let set: BTreeSet<Backend> = service
+                .backends
+                .iter()
+                .map(|b| b.to_backend())
+                .collect::<anyhow::Result<_>>()?;
 
             let backends = Backends::new(Static::new(set));
 
@@ -56,21 +61,26 @@ impl RevProxy {
             let lb_handle = background.task(); // Arc<LoadBalancer<RoundRobin>>
             background_services.push(background);
 
-            router.insert(
-                format!("{}/{{*rest}}", service.prefix.clone()),
+            prefix_routes.push((
+                service.prefix.clone(),
                 Arc::new(ServiceRuntime {
                     name: service.name.clone(),
                     lb: lb_handle,
                 }),
-            )?;
+            ));
         }
 
+        for vec in services.values_mut() {
+            vec.sort_by(|a, b| a.0.cmp(&b.0));
+        }
         Ok((RevProxy { services }, background_services))
     }
 }
 
 pub struct RequestContext {
     pub service: Option<Arc<ServiceRuntime>>,
+    pub request_id: Option<Uuid>,
+    pub backend_addr: Option<String>,
 }
 
 #[async_trait]
@@ -78,7 +88,11 @@ impl ProxyHttp for RevProxy {
     type CTX = RequestContext;
 
     fn new_ctx(&self) -> Self::CTX {
-        RequestContext { service: None }
+        RequestContext {
+            service: None,
+            request_id: Some(Uuid::new_v4()),
+            backend_addr: None,
+        }
     }
 
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
@@ -90,23 +104,51 @@ impl ProxyHttp for RevProxy {
             .unwrap_or("")
             .to_string();
 
-        let path = session.req_header().uri.path();
+        let Ok(path) = session.req_header().uri.path().strip_index_prefix() else {
+            session
+                .respond_error_with_body(
+                    404,
+                    Bytes::from(
+                        "error during prefix routing: Error during the stripping of the prefix",
+                    ),
+                )
+                .await?;
+            return Ok(true);
+        };
+
         #[cfg(debug_assertions)]
         dbg!(&path);
 
         match self.services.get(&host) {
-            Some(router) => match router.at(&path) {
-                Ok(s) => {
-                    ctx.service = Some(s.value.clone());
-                    Ok(false)
-                }
-                Err(_) => {
+            Some(router) => {
+                let matched_prefix = router.iter().find(|r| r.0.starts_with(&path));
+
+                if matched_prefix.is_none() {
                     session
                         .respond_error_with_body(404, Bytes::from("error during prefix routing"))
                         .await?;
-                    Ok(true)
+                    return Ok(true);
+                } else {
+                    ctx.service = Some(matched_prefix.unwrap().1.clone());
+                    Ok(false)
                 }
-            },
+
+                // match matched_prefix.unwrap() {
+                //     Ok(s) => {
+                //         ctx.service = Some(s.value.clone());
+                //         Ok(false)
+                //     }
+                //     Err(_) => {
+                //         session
+                //             .respond_error_with_body(
+                //                 404,
+                //                 Bytes::from("error during prefix routing"),
+                //             )
+                //             .await?;
+                //         Ok(true)
+                //     }
+                // }
+            }
             None => {
                 session
                     .respond_error_with_body(404, Bytes::from("error during host routing"))
@@ -120,7 +162,7 @@ impl ProxyHttp for RevProxy {
         &self,
         session: &mut Session,
         e: Option<&pingora_error::Error>,
-        _ctx: &mut Self::CTX,
+        ctx: &mut Self::CTX,
     ) where
         Self::CTX: Send + Sync,
     {
@@ -129,17 +171,15 @@ impl ProxyHttp for RevProxy {
                 error!("{}", e.to_string());
 
                 if e.cause.is_some() {
-                    error!(
-                        "cause of the error is: {} \n ",
-                        e.cause.as_ref().unwrap().to_string()
-                    )
+                    error!("cause of the error is: {} \n ", e.cause.as_ref().unwrap())
                 }
             }
             None => {
                 info!(
-                    "request forwarded from client with address: {:?} to {:?}",
+                    "request with id: {:?} forwarded from client with address: {:?} to {:?}",
+                    ctx.request_id,
                     session.client_addr().map(|a| { a.to_string() }),
-                    session.server_addr().map(|a| a.to_string())
+                    ctx.backend_addr
                 )
             }
         }
@@ -157,8 +197,179 @@ impl ProxyHttp for RevProxy {
             .select(b"", 256)
             .ok_or_else(|| pingora_core::Error::new_str("no healthy backend"))?;
 
+        ctx.backend_addr = Some(bkd.addr.clone().to_string());
+
         let peer = HttpPeer::new(bkd.addr, false, String::new());
 
         Ok(Box::new(peer))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use config::config::{BackendConfig, Config, ServiceConfig};
+    use std::net::IpAddr;
+
+    fn backend(name: &str, host: &str, port: u16, weight: usize) -> BackendConfig {
+        BackendConfig {
+            name: name.to_string(),
+            host: host.parse::<IpAddr>().unwrap(),
+            port,
+            weight,
+        }
+    }
+
+    fn service(
+        name: &str,
+        host: &str,
+        prefix: &str,
+        backends: Vec<BackendConfig>,
+    ) -> ServiceConfig {
+        ServiceConfig {
+            name: name.to_string(),
+            host: host.to_string(),
+            prefix: prefix.to_string(),
+            backends,
+        }
+    }
+
+    fn config(services: Vec<ServiceConfig>) -> Config {
+        Config { services }
+    }
+
+    #[test]
+    fn builds_host_and_prefix_routing_table() {
+        let cfg = config(vec![
+            service(
+                "user-service",
+                "api.local",
+                "/user",
+                vec![
+                    backend("user-backend-1", "127.0.0.1", 3001, 1),
+                    backend("user-backend-2", "127.0.0.1", 3002, 1),
+                ],
+            ),
+            service(
+                "auth-service",
+                "api.local",
+                "/auth",
+                vec![backend("auth-backend-1", "127.0.0.1", 4001, 1)],
+            ),
+            service(
+                "admin-user-service",
+                "admin.local",
+                "/user",
+                vec![backend("admin-user-backend", "127.0.0.1", 5001, 1)],
+            ),
+        ]);
+
+        let (rev_proxy, background_services) = RevProxy::init_from_config(&cfg).unwrap();
+
+        // One router per distinct host.
+        assert_eq!(rev_proxy.services.len(), 2);
+        assert!(rev_proxy.services.contains_key("api.local"));
+        assert!(rev_proxy.services.contains_key("admin.local"));
+
+        // One background health-check service per configured service.
+        assert_eq!(background_services.len(), 3);
+
+        // api.local serves both /user and /auth prefixes.
+        let api_router = &rev_proxy.services["api.local"];
+
+        for vec in api_router {
+            dbg!(&vec.0);
+        }
+
+        assert!(
+            api_router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/user/123".strip_index_prefix().unwrap().as_str()))
+                .is_some()
+        );
+
+        assert!(
+            api_router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/auth/login".strip_index_prefix().unwrap().as_str()))
+                .is_some()
+        );
+
+        // assert!(api_router.at("/user/123").is_ok());
+        // assert!(api_router.at("/auth/login").is_ok());
+
+        // admin.local serves /user but not /auth.
+        let admin_router = &rev_proxy.services["admin.local"];
+
+        assert!(
+            admin_router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/user/456".strip_index_prefix().unwrap().as_str()))
+                .is_some()
+        );
+
+        assert!(
+            admin_router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/auth/login".strip_index_prefix().unwrap().as_str()))
+                .is_none()
+        );
+
+        // assert!(admin_router.at("/user/456").is_ok());
+        // assert!(admin_router.at("/auth/login").is_err());
+    }
+
+    #[test]
+    fn unknown_prefix_has_no_match() {
+        let cfg = config(vec![service(
+            "user-service",
+            "api.local",
+            "/user",
+            vec![backend("user-backend-1", "127.0.0.1", 3001, 1)],
+        )]);
+
+        let (rev_proxy, _) = RevProxy::init_from_config(&cfg).unwrap();
+
+        let router = &rev_proxy.services["api.local"];
+
+        assert!(
+            router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/user/999".strip_index_prefix().unwrap().as_str()))
+                .is_some()
+        );
+
+        assert!(
+            router
+                .iter()
+                .find(|r| r
+                    .0
+                    .starts_with("/unknown".strip_index_prefix().unwrap().as_str()))
+                .is_none()
+        );
+
+        // assert!(router.at("/user/999").is_ok());
+        // assert!(router.at("/unknown").is_err());
+        // assert!(router.at("/").is_err());
+    }
+
+    #[test]
+    fn empty_services_yields_empty_routing_table() {
+        let cfg = config(vec![]);
+
+        let (rev_proxy, background_services) = RevProxy::init_from_config(&cfg).unwrap();
+
+        assert!(rev_proxy.services.is_empty());
+        assert!(background_services.is_empty());
     }
 }
