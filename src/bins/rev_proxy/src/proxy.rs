@@ -10,6 +10,7 @@ use log::{error, info};
 use pingora_core::Result;
 use pingora_core::services::background::{GenBackgroundService, background_service};
 use pingora_core::upstreams::peer::HttpPeer;
+use pingora_http::ResponseHeader;
 use pingora_load_balancing::discovery::Static;
 use pingora_load_balancing::health_check::TcpHealthCheck;
 use pingora_load_balancing::selection::RoundRobin;
@@ -17,6 +18,7 @@ use pingora_load_balancing::{Backend, Backends, LoadBalancer};
 use pingora_proxy::{ProxyHttp, Session};
 use uuid::Uuid;
 
+use crate::rate_limiter::{MAX_REQ_PER_SEC, RATE_LIMITER};
 use crate::traits::{PrefixIndexable, ToBackend};
 
 pub struct ServiceRuntime {
@@ -96,6 +98,24 @@ impl ProxyHttp for RevProxy {
     }
 
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
+        match Self::get_request_appid(session) {
+            Some(id) => {
+                let curr_window_requests = RATE_LIMITER.observe(&id, 1);
+                if curr_window_requests > MAX_REQ_PER_SEC {
+                    let mut header = ResponseHeader::build(429, None)?;
+                    header.insert_header("X-Rate-Limit-Limit", MAX_REQ_PER_SEC.to_string())?;
+                    header.insert_header("X-Rate-Limit-Remaining", "0")?;
+                    header.insert_header("X-Rate-Limit-Reset", "1")?;
+                    session.set_keepalive(None);
+                    session
+                        .write_response_header(Box::new(header), true)
+                        .await?;
+                    return Ok(true);
+                }
+            }
+            None => todo!(),
+        };
+
         let host = session
             .req_header()
             .headers
@@ -123,31 +143,21 @@ impl ProxyHttp for RevProxy {
             Some(router) => {
                 let matched_prefix = router.iter().find(|r| r.0.starts_with(&path));
 
-                if matched_prefix.is_none() {
-                    session
-                        .respond_error_with_body(404, Bytes::from("error during prefix routing"))
-                        .await?;
-                    return Ok(true);
-                } else {
-                    ctx.service = Some(matched_prefix.unwrap().1.clone());
-                    Ok(false)
+                match matched_prefix {
+                    Some(a) => {
+                        ctx.service = Some(a.1.clone());
+                        Ok(false)
+                    }
+                    None => {
+                        session
+                            .respond_error_with_body(
+                                404,
+                                Bytes::from("error during prefix routing"),
+                            )
+                            .await?;
+                        return Ok(true);
+                    }
                 }
-
-                // match matched_prefix.unwrap() {
-                //     Ok(s) => {
-                //         ctx.service = Some(s.value.clone());
-                //         Ok(false)
-                //     }
-                //     Err(_) => {
-                //         session
-                //             .respond_error_with_body(
-                //                 404,
-                //                 Bytes::from("error during prefix routing"),
-                //             )
-                //             .await?;
-                //         Ok(true)
-                //     }
-                // }
             }
             None => {
                 session
@@ -299,10 +309,6 @@ mod tests {
                 .is_some()
         );
 
-        // assert!(api_router.at("/user/123").is_ok());
-        // assert!(api_router.at("/auth/login").is_ok());
-
-        // admin.local serves /user but not /auth.
         let admin_router = &rev_proxy.services["admin.local"];
 
         assert!(
@@ -322,9 +328,6 @@ mod tests {
                     .starts_with("/auth/login".strip_index_prefix().unwrap().as_str()))
                 .is_none()
         );
-
-        // assert!(admin_router.at("/user/456").is_ok());
-        // assert!(admin_router.at("/auth/login").is_err());
     }
 
     #[test]
@@ -357,10 +360,6 @@ mod tests {
                     .starts_with("/unknown".strip_index_prefix().unwrap().as_str()))
                 .is_none()
         );
-
-        // assert!(router.at("/user/999").is_ok());
-        // assert!(router.at("/unknown").is_err());
-        // assert!(router.at("/").is_err());
     }
 
     #[test]

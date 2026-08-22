@@ -68,7 +68,10 @@ mod tests {
         assert_eq!(user.prefix, "/user");
         assert_eq!(user.backends.len(), 2);
         assert_eq!(user.backends[0].name, "user-backend-1");
-        assert_eq!(user.backends[0].host, "127.0.0.1".parse::<IpAddr>().unwrap());
+        assert_eq!(
+            user.backends[0].host,
+            "127.0.0.1".parse::<IpAddr>().unwrap()
+        );
         assert_eq!(user.backends[0].port, 3001);
         assert_eq!(user.backends[0].weight, 1);
         assert_eq!(user.backends[1].weight, 3);

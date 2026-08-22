@@ -1,5 +1,7 @@
 pub mod error;
+pub mod get_request_id;
 pub mod proxy;
+pub mod rate_limiter;
 pub mod traits;
 use std::{path::PathBuf, str::FromStr};
 
