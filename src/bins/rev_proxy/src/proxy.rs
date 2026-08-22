@@ -100,6 +100,7 @@ impl ProxyHttp for RevProxy {
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
         match Self::get_request_appid(session) {
             Some(id) => {
+                info!("{}", &id);
                 let curr_window_requests = RATE_LIMITER.observe(&id, 1);
                 if curr_window_requests > MAX_REQ_PER_SEC {
                     let mut header = ResponseHeader::build(429, None)?;
@@ -113,7 +114,7 @@ impl ProxyHttp for RevProxy {
                     return Ok(true);
                 }
             }
-            None => todo!(),
+            None => (),
         };
 
         let host = session
