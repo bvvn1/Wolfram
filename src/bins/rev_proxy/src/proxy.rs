@@ -98,6 +98,7 @@ impl ProxyHttp for RevProxy {
     }
 
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
+        // RATE LIMIT -----------------------------
         match Self::get_request_appid(session) {
             Some(id) => {
                 info!("{}", &id);
@@ -116,7 +117,13 @@ impl ProxyHttp for RevProxy {
             }
             None => (),
         };
+        // -----------------------------------------------------------
+        #[cfg(debug_assertions)]
+        for (name, value) in session.req_header().headers.iter() {
+            eprintln!("HEADER: {}: {:?}", name, value);
+        }
 
+        // HOST ROUTING ----------------
         let host = session
             .req_header()
             .headers
@@ -125,6 +132,7 @@ impl ProxyHttp for RevProxy {
             .unwrap_or("")
             .to_string();
 
+        // --------------- prefix routing
         let Ok(path) = session.req_header().uri.path().strip_index_prefix() else {
             session
                 .respond_error_with_body(

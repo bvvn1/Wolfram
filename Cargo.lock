@@ -1437,6 +1437,7 @@ dependencies = [
  "anyhow",
  "jsonwebtoken",
  "serde",
+ "sqlx",
  "tokio",
  "uuid",
 ]

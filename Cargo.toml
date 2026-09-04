@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["src/libs/config","src/bins/rev_proxy", "src/bins/auth", "src/libs/jwt"]
+members = ["src/libs/config","src/bins/rev_proxy", "src/bins/auth", "src/libs/auth"]
 
 [workspace.dependencies]
 
