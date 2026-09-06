@@ -150,7 +150,7 @@ impl ProxyHttp for RevProxy {
 
         match self.services.get(&host) {
             Some(router) => {
-                let matched_prefix = router.iter().find(|r| r.0.starts_with(&path));
+                let matched_prefix = router.iter().find(|r| path.starts_with(&r.0));
 
                 match matched_prefix {
                     Some(a) => {
