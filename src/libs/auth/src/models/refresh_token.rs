@@ -1,8 +1,10 @@
 use std::net::IpAddr;
 
 use chrono::{DateTime, Utc};
+use serde::Serialize;
 use uuid::Uuid;
 
+#[derive(sqlx::FromRow, Debug, Serialize)]
 pub struct RefreshToken {
     id: Uuid,
     user_id: Uuid,

@@ -7,7 +7,7 @@ CREATE TABLE refresh_tokens (
     ip_address TEXT,
     user_agent TEXT,
     expires_at TIMESTAMPZ NOT NULL,
-    revoked_ TIMESTAMPZ,
+    revoked_at TIMESTAMPZ,
     replaced_by_token_id UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

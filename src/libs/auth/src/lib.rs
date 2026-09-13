@@ -1,4 +1,5 @@
-mod config;
+pub mod config;
 
-mod jwt;
-mod models;
+pub mod crud;
+pub mod jwt;
+pub mod models;
