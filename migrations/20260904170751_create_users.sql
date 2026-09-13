@@ -1,11 +1,11 @@
 -- Add migration script here
-CREATE TABLE users IF NOT EXISTS (
+CREATE TABLE IF NOT EXISTS users(
     id UUID PRIMARY KEY,
     email TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     is_admin BOOLEAN NOT NULL,
-    created_at TIMESTAMPZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPZ NOT NULL DEFAULT now()
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_users_email ON users(email);

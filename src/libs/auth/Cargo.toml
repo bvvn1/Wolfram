@@ -11,3 +11,5 @@ serde.workspace = true
 anyhow.workspace = true
 sqlx.workspace = true
 chrono.workspace = true
+argon2.workspace = true
+thiserror.workspace = true
