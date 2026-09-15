@@ -7,4 +7,13 @@ pub enum Error {
 
     #[error("Error in database operations")]
     DatabaseError(#[from] sqlx::Error),
+
+    #[error("Wrong username or password")]
+    InvalidCredentials,
+
+    #[error("Authentication Error: {0}")]
+    AuthError(String),
+
+    #[error("Context: ")]
+    CustomContext(String),
 }

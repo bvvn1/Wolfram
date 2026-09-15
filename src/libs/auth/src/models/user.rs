@@ -5,7 +5,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone, sqlx::FromRow, Serialize)]
 pub struct User {
     pub id: Uuid,
-    pub email: String,
+    pub username: String,
+    pub email: Option<String>,
     #[serde(skip_serializing)]
     pub password_hash: String,
     pub is_admin: bool,
